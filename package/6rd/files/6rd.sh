@@ -75,7 +75,7 @@ proto_6rd_setup() {
 	ip4prefix="${ip4prefix#NETWORK=}"
 
 	# The IPv6 network allocated to us.
-	local net6=$(6rdcalc "$ip6prefix::/$ip6prefixlen" "$local4/$ip4prefixlen")
+	local net6=$(6rdcalc "$ip6prefix/$ip6prefixlen" "$local4/$ip4prefixlen")
 	# Our own IPv6 in the network.
 	local local6="${net6%%::*}::1"
 
@@ -89,7 +89,7 @@ proto_6rd_setup() {
 	json_add_int mtu "${mtu:-1280}"
 	json_add_int ttl "${ttl:-64}"
 	json_add_string local "$local4"
-	json_add_string 6rd-prefix "$ip6prefix::/$ip6prefixlen"
+	json_add_string 6rd-prefix "$ip6prefix/$ip6prefixlen"
 	json_add_string 6rd-relay-prefix "$ip4prefix/$ip4prefixlen"
 	proto_close_tunnel
 
