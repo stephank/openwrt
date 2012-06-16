@@ -84,11 +84,10 @@ proto_6rd_setup() {
 	json_add_int mtu "${mtu:-1280}"
 	json_add_int ttl "${ttl:-64}"
 	json_add_string local "$local4"
+	json_add_string 6rd-prefix "$sixrdprefix::/$sixrdprefixlen"
 	proto_close_tunnel
 
 	proto_send_update "$cfg"
-
-	ip tunnel 6rd dev $link 6rd-prefix $sixrdprefix::/$sixrdprefixlen
 }
 
 proto_6rd_teardown() {
