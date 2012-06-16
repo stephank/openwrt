@@ -38,10 +38,10 @@ proto_6rd_setup() {
 	json_get_var ttl ttl
 	json_get_var local4 ipaddr
 	json_get_var remote4 peeraddr
-	json_get_var sixrdprefix sixrdprefix
-	json_get_var sixrdprefixlen sixrdprefixlen
+	json_get_var ip6prefix ip6prefix
+	json_get_var ip6prefixlen ip6prefixlen
 
-	[ -z "$sixrdprefix" -o -z "$remote4" ] && {
+	[ -z "$ip6prefix" -o -z "$remote4" ] && {
 		tun_error "$cfg" "MISSING_ADDRESS"
 		return
 	}
@@ -71,8 +71,8 @@ proto_6rd_setup() {
 	}
 
 	local local4hex=$(ipv4tohex "$local4")
-	local local6="$sixrdprefix:$local4hex::1"
-	local mask6="$sixrdprefixlen"
+	local local6="$ip6prefix:$local4hex::1"
+	local mask6="$ip6prefixlen"
 	[[ "$local6" = "$mask6" ]] && mask6=
 
 	proto_init_update "$link" 1
@@ -84,7 +84,7 @@ proto_6rd_setup() {
 	json_add_int mtu "${mtu:-1280}"
 	json_add_int ttl "${ttl:-64}"
 	json_add_string local "$local4"
-	json_add_string 6rd-prefix "$sixrdprefix::/$sixrdprefixlen"
+	json_add_string 6rd-prefix "$ip6prefix::/$ip6prefixlen"
 	proto_close_tunnel
 
 	proto_send_update "$cfg"
@@ -99,8 +99,8 @@ proto_6rd_init_config() {
 	available=1
 
 	proto_config_add_string "peeraddr"
-	proto_config_add_string "sixrdprefix"
-	proto_config_add_string "sixrdprefixlen"
+	proto_config_add_string "ip6prefix"
+	proto_config_add_string "ip6prefixlen"
 	proto_config_add_int "mtu"
 	proto_config_add_int "ttl"
 }
