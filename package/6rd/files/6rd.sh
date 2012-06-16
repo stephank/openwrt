@@ -18,10 +18,6 @@ find_6rd_wanip() {
 	echo "${ip%%[^0-9.]*}"
 }
 
-ipv4tohex() {
-	printf "%02x%02x:%02x%02x" $(echo $1 | tr "." " ")
-}
-
 tun_error() {
 	local cfg="$1"; shift;
 
@@ -40,12 +36,14 @@ proto_6rd_setup() {
 	json_get_var remote4 peeraddr
 	json_get_var ip6prefix ip6prefix
 	json_get_var ip6prefixlen ip6prefixlen
+	json_get_var ip4prefixlen ip4prefixlen
 
 	[ -z "$ip6prefix" -o -z "$remote4" ] && {
 		tun_error "$cfg" "MISSING_ADDRESS"
 		return
 	}
 
+	# Figure out our IPv4 address.
 	[ -z "$local4" ] && {
 		local wanif=$(find_6rd_wanif)
 		[ -z "$wanif" ] && {
@@ -70,13 +68,20 @@ proto_6rd_setup() {
 		}
 	}
 
-	local local4hex=$(ipv4tohex "$local4")
-	local local6="$ip6prefix:$local4hex::1"
-	local mask6="$ip6prefixlen"
-	[[ "$local6" = "$mask6" ]] && mask6=
+	# Default to using the entire IPv4 address.
+	local ip4prefixlen="${ip4prefixlen:-0}"
+	# The unmasked part of the relay prefix must be zeroes.
+	local ip4prefix=$(ipcalc.sh "$local4/$ip4prefixlen" | grep NETWORK)
+	ip4prefix="${ip4prefix#NETWORK=}"
 
+	# The IPv6 network allocated to us.
+	local net6=$(6rdcalc "$ip6prefix::/$ip6prefixlen" "$local4/$ip4prefixlen")
+	# Our own IPv6 in the network.
+	local local6="${net6%%::*}::1"
+
+	# Send the update.
 	proto_init_update "$link" 1
-	proto_add_ipv6_address "$local6" "$mask6"
+	proto_add_ipv6_address "$local6" "$ip6prefixlen"
 	proto_add_ipv6_route "::" 0 "::$remote4"
 
 	proto_add_tunnel
@@ -85,6 +90,7 @@ proto_6rd_setup() {
 	json_add_int ttl "${ttl:-64}"
 	json_add_string local "$local4"
 	json_add_string 6rd-prefix "$ip6prefix::/$ip6prefixlen"
+	json_add_string 6rd-relay-prefix "$ip4prefix/$ip4prefixlen"
 	proto_close_tunnel
 
 	proto_send_update "$cfg"
@@ -95,14 +101,15 @@ proto_6rd_teardown() {
 }
 
 proto_6rd_init_config() {
-	no_device=1             
+	no_device=1
 	available=1
 
+	proto_config_add_int "mtu"
+	proto_config_add_int "ttl"
 	proto_config_add_string "peeraddr"
 	proto_config_add_string "ip6prefix"
 	proto_config_add_string "ip6prefixlen"
-	proto_config_add_int "mtu"
-	proto_config_add_int "ttl"
+	proto_config_add_string "ip4prefixlen"
 }
 
 [ -n "$INCLUDE_ONLY" ] || {
