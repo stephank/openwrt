@@ -4,18 +4,9 @@
 
 [ -n "$INCLUDE_ONLY" ] || {
 	. /lib/functions.sh
+	. /lib/functions/network.sh
 	. ../netifd-proto.sh
 	init_proto "$@"
-}
-
-find_6rd_wanif() {
-	local if=$(ip -4 r l e 0.0.0.0/0); if="${if#default* dev }"; if="${if%% *}"
-	[ -n "$if" ] && grep -qs "^ *$if:" /proc/net/dev && echo "$if"
-}
-
-find_6rd_wanip() {
-	local ip=$(ip -4 a s dev "$1"); ip="${ip#*inet }"
-	echo "${ip%%[^0-9.]*}"
 }
 
 tun_error() {
@@ -30,65 +21,40 @@ proto_6rd_setup() {
 	local iface="$2"
 	local link="6rd-$cfg"
 
-	json_get_var mtu mtu
-	json_get_var ttl ttl
-	json_get_var local4 ipaddr
-	json_get_var remote4 peeraddr
-	json_get_var ip6prefix ip6prefix
-	json_get_var ip6prefixlen ip6prefixlen
-	json_get_var ip4prefixlen ip4prefixlen
+	local mtu ttl ipaddr peeraddr ip6prefix ip6prefixlen ip4prefixlen
+	json_get_vars mtu ttl ipaddr peeraddr ip6prefix ip6prefixlen ip4prefixlen
 
-	[ -z "$ip6prefix" -o -z "$remote4" ] && {
+	[ -z "$ip6prefix" -o -z "$peeraddr" ] && {
 		tun_error "$cfg" "MISSING_ADDRESS"
 		return
 	}
 
-	# Figure out our IPv4 address.
-	[ -z "$local4" ] && {
-		local wanif=$(find_6rd_wanif)
-		[ -z "$wanif" ] && {
+	[ -z "$ipaddr" ] && {
+		local wanif
+		if ! network_find_wan wanif || ! network_get_ipaddr ipaddr "$wanif"; then
 			tun_error "$cfg" "NO_WAN_LINK"
 			return
-		}
-
-		. /lib/network/config.sh
-		local wancfg="$(find_config "$wanif")"
-		[ -z "$wancfg" ] && {
-			tun_error "$cfg" "NO_WAN_LINK"
-			return
-		}
-
-		# If local4 is unset, guess local IPv4 address from the
-		# interface used by the default route.
-		[ -n "$wanif" ] && local4=$(find_6rd_wanip "$wanif")
-
-		[ -z "$local4" ] && {
-			tun_error "$cfg" "NO_WAN_LINK"
-			return
-		}
+		fi
 	}
 
-	# Default to using the entire IPv4 address.
+	# Determine the relay prefix.
 	local ip4prefixlen="${ip4prefixlen:-0}"
-	# The unmasked part of the relay prefix must be zeroes.
-	local ip4prefix=$(ipcalc.sh "$local4/$ip4prefixlen" | grep NETWORK)
+	local ip4prefix=$(ipcalc.sh "$ipaddr/$ip4prefixlen" | grep NETWORK)
 	ip4prefix="${ip4prefix#NETWORK=}"
 
-	# The IPv6 network allocated to us.
-	local net6=$(6rdcalc "$ip6prefix/$ip6prefixlen" "$local4/$ip4prefixlen")
-	# Our own IPv6 in the network.
-	local local6="${net6%%::*}::1"
+	# Determine our IPv6 address.
+	local ip6subnet=$(6rdcalc "$ip6prefix/$ip6prefixlen" "$ipaddr/$ip4prefixlen")
+	local ip6addr="${ip6subnet%%::*}::1"
 
-	# Send the update.
 	proto_init_update "$link" 1
-	proto_add_ipv6_address "$local6" "$ip6prefixlen"
-	proto_add_ipv6_route "::" 0 "::$remote4"
+	proto_add_ipv6_address "$ip6addr" "$ip6prefixlen"
+	proto_add_ipv6_route "::" 0 "::$peeraddr"
 
 	proto_add_tunnel
 	json_add_string mode sit
 	json_add_int mtu "${mtu:-1280}"
 	json_add_int ttl "${ttl:-64}"
-	json_add_string local "$local4"
+	json_add_string local "$ipaddr"
 	json_add_string 6rd-prefix "$ip6prefix/$ip6prefixlen"
 	json_add_string 6rd-relay-prefix "$ip4prefix/$ip4prefixlen"
 	proto_close_tunnel
