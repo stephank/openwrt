@@ -16,7 +16,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/6rd
   SECTION:=ipv6
   CATEGORY:=IPv6
-  DEPENDS:=+ip +kmod-ipv6 +kmod-sit
+  DEPENDS:=+kmod-ipv6 +kmod-sit
   TITLE:=6rd configuration support
   MAINTAINER:=Stéphan Kochen <stephan@kochen.nl>
   PKGARCH:=all
